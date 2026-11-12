@@ -32,7 +32,7 @@ export default async (req) => {
   const path = new URL(req.url).pathname.replace(/^\/api\/?/, "");
   if (path === "ping") return json({ ok: true });
   if (SECRET().length < 32)
-    return json({ error: "Server belum dikonfigurasi (AUTH_SECRET belum diatur)." }, 500);
+    return json({ error: "AUTH_SECRET terbaca " + SECRET().length + " karakter (butuh minimal 32)." }, 500);
 
   const store = getStore({ name: "invoicer", consistency: "strong" });
   try {
