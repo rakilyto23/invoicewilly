@@ -77,7 +77,7 @@ textarea{resize:vertical;min-height:54px}
 .pv{position:sticky;top:12px}
 .msg{font-size:12px;color:rgba(255,255,255,.8);margin-top:8px;min-height:16px}
 .scroll{overflow:hidden;border-radius:6px}
-#paper{background:#fbf7ea;color:#1a1a1a;width:794px;min-width:794px;min-height:1123px;transform-origin:top left;padding:56px;box-shadow:0 8px 30px rgba(0,0,0,.25);font-family:Georgia,"Times New Roman",serif;font-size:13px;line-height:1.45}
+#paper{background:#fbf7ea;color:#1a1a1a;width:794px;min-width:794px;min-height:1123px;transform-origin:top left;position:relative;overflow:hidden;padding:56px;box-shadow:0 8px 30px rgba(0,0,0,.25);font-family:Georgia,"Times New Roman",serif;font-size:13px;line-height:1.45}
 #paper .top{display:flex;justify-content:space-between;gap:12px}
 #paper .ttl{font-family:"Cormorant Garamond","The Seasons",Georgia,serif;font-style:italic;font-weight:500;font-size:46px;line-height:1}
 #paper .lbl{font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.05em;margin-top:14px}
@@ -90,6 +90,8 @@ textarea{resize:vertical;min-height:54px}
 #paper .tot div{display:flex;justify-content:space-between;padding:3px 0}
 #paper .grand{font-weight:700;font-size:14px;border-top:2px solid #111;margin-top:4px;padding-top:6px!important}
 #paper .note{white-space:pre-wrap}
+#paper .rest{font-weight:700;border-top:1px solid #1a1a1a;margin-top:4px;padding-top:6px!important}
+#paper .wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-24deg);font:800 190px/1 "Plus Jakarta Sans",Arial,sans-serif;letter-spacing:.08em;color:rgba(46,160,90,.17);border:14px solid rgba(46,160,90,.17);border-radius:24px;padding:10px 40px;white-space:nowrap;pointer-events:none}
 @media(max-width:1300px){.purple{grid-template-columns:1fr}.pv{position:static}}
 @media(max-width:860px){.dark{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}#lst{max-height:260px}body{padding:8px}.shell{padding:16px;border-radius:22px}}
 @media(max-width:520px){.stats{grid-template-columns:1fr}h1{font-size:28px}}
@@ -150,6 +152,11 @@ Telp: 0812-3456-7890</textarea></div></div>
           <div class="g2" style="margin-top:12px">
             <div class="f" style="margin:0"><label>Diskon (%)</label><input type="number" id="disc" value="0" min="0" max="100"></div>
             <div class="f" style="margin:0"><label>Pajak / PPN (%)</label><input type="number" id="tax" value="11" min="0"></div></div></div>
+        <div class="fc"><h2>Down payment &amp; status</h2>
+          <div class="g2"><div class="f"><label>Jenis DP</label><select id="dpType"><option value="amt">Nominal</option><option value="pct">Persen (%)</option></select></div>
+          <div class="f"><label>Jumlah DP</label><input type="number" id="dp" value="0" min="0"></div></div>
+          <div class="f" style="margin:0"><label>Status pembayaran</label><select id="paid"><option value="0">Belum lunas</option><option value="1">Lunas (jadi Kwitansi + stempel PAID)</option></select></div>
+          <div class="f" id="pdw" hidden style="margin:10px 0 0"><label>Tanggal pelunasan</label><input type="date" id="paidDate"></div></div>
         <div class="fc"><h2>Pembayaran &amp; catatan</h2>
           <div class="f"><label>Info pembayaran</label><textarea id="pay">Bank BCA 1234567890 a.n. Studio Kreatif Nusantara</textarea></div>
           <div class="f" style="margin:0"><label>Catatan</label><textarea id="note">Terima kasih atas kepercayaan Anda.</textarea></div></div>
@@ -173,7 +180,7 @@ Telp: 0812-3456-7890</textarea></div></div>
 <div id="lerr" class="lerr"></div><button class="pr" id="lgo">Masuk</button></div></div>
 <script>
 const $=id=>document.getElementById(id);
-const fields=['fromName','fromAddr','no','cur','date','due','toName','toAddr','disc','tax','pay','note','sigName'];
+const fields=['fromName','fromAddr','no','cur','date','due','toName','toAddr','disc','tax','pay','note','sigName','dpType','dp','paid','paidDate'];
 let items=[{d:'Desain logo & identitas visual',q:1,p:2500000},{d:'Copywriting kampanye',q:2,p:750000}];
 let sig=null,curId=null,cache=null;
 $('date').value=new Date().toISOString().slice(0,10);
@@ -185,7 +192,8 @@ function fdate(v){if(!v)return '-';const [y,m,d]=v.split('-');const b=['Jan','Fe
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function calc(){
   const sub=items.reduce((a,i)=>a+(+i.q||0)*(+i.p||0),0),disc=sub*(+$('disc').value||0)/100,tax=(sub-disc)*(+$('tax').value||0)/100;
-  return{sub,disc,tax,total:sub-disc+tax};
+  const total=sub-disc+tax,dv=+$('dp').value||0,dp=Math.min(total,Math.max(0,$('dpType').value==='pct'?total*dv/100:dv)),paid=$('paid').value==='1';
+  return{sub,disc,tax,total,dp,paid,rest:paid?0:total-dp,pay:paid?total-dp:0};
 }
 function totalOf(e){const s=e.items.reduce((a,i)=>a+(+i.q||0)*(+i.p||0),0);return s*(1-(+e.f.disc||0)/100)*(1+(+e.f.tax||0)/100)}
 
@@ -200,22 +208,33 @@ function renderItems(){
     $('items').appendChild(r);
   });
 }
+function dpRows(t){
+  if(!t.dp&&!t.paid)return '';
+  let h='';
+  if(t.dp)h+='<div><span>Down payment (DP)'+($('dpType').value==='pct'?' '+(+$('dp').value)+'%':'')+'</span><span>−'+money(t.dp)+'</span></div>';
+  if(t.paid&&t.pay>0)h+='<div><span>Pelunasan</span><span>−'+money(t.pay)+'</span></div>';
+  return h+'<div class="rest"><span>Sisa tagihan</span><span>'+money(t.rest)+'</span></div>';
+}
+function paidUI(){
+  const p=$('paid').value==='1';$('pdw').hidden=!p;
+  if(p&&!$('paidDate').value)$('paidDate').value=new Date().toISOString().slice(0,10);
+}
 function sigHTML(){
   return '<div style="display:flex;justify-content:flex-end;margin-top:26px"><div style="width:200px;text-align:center"><div class="lbl" style="margin-top:0">Hormat kami,</div><div style="height:80px;display:flex;align-items:flex-end;justify-content:center">'+(sig?'<img src="'+sig.data+'" style="max-height:80px;max-width:100%" alt="Tanda tangan">':'')+'</div><div style="border-top:1px solid #1a1a1a;padding-top:4px;min-height:22px">'+esc($('sigName').value)+'</div></div></div>';
 }
 function preview(){
-  const t=calc(),v=id=>esc($(id).value);
+  paidUI();const t=calc(),v=id=>esc($(id).value);
   const rows=items.map(i=>'<tr><td>'+esc(i.d)+'</td><td class="r">'+(+i.q||0)+'</td><td class="r">'+money(+i.p||0)+'</td><td class="r">'+money((+i.q||0)*(+i.p||0))+'</td></tr>').join('');
   $('paper').innerHTML=
-  '<div class="top"><div><div class="ttl">Invoice</div><div>No. '+v('no')+'</div></div><div style="text-align:right"><b>'+v('fromName')+'</b><div class="note">'+v('fromAddr')+'</div></div></div>'+
-  '<div class="row"><div><div class="lbl">Ditagihkan kepada</div><b>'+v('toName')+'</b><div class="note">'+v('toAddr')+'</div></div><div style="text-align:right"><div class="lbl">Tanggal</div>'+fdate($('date').value)+'<div class="lbl">Jatuh tempo</div>'+fdate($('due').value)+'</div></div>'+
+  '<div class="top"><div><div class="ttl">'+(t.paid?'Kwitansi':'Invoice')+'</div><div>No. '+v('no')+'</div></div><div style="text-align:right"><b>'+v('fromName')+'</b><div class="note">'+v('fromAddr')+'</div></div></div>'+
+  '<div class="row"><div><div class="lbl">'+(t.paid?'Diterima dari':'Ditagihkan kepada')+'</div><b>'+v('toName')+'</b><div class="note">'+v('toAddr')+'</div></div><div style="text-align:right"><div class="lbl">Tanggal</div>'+fdate($('date').value)+'<div class="lbl">Jatuh tempo</div>'+fdate($('due').value)+(t.paid&&$('paidDate').value?'<div class="lbl">Tanggal lunas</div>'+fdate($('paidDate').value):'')+'</div></div>'+
   '<table><tr><th>Deskripsi</th><th class="r">Qty</th><th class="r">Harga</th><th class="r">Jumlah</th></tr>'+rows+'</table>'+
   '<div class="tot"><div><span>Subtotal</span><span>'+money(t.sub)+'</span></div>'+
   (t.disc?'<div><span>Diskon ('+(+$('disc').value)+'%)</span><span>−'+money(t.disc)+'</span></div>':'')+
   (t.tax?'<div><span>Pajak ('+(+$('tax').value)+'%)</span><span>'+money(t.tax)+'</span></div>':'')+
-  '<div class="grand"><span>Total</span><span>'+money(t.total)+'</span></div></div>'+
+  '<div class="grand"><span>Total</span><span>'+money(t.total)+'</span></div>'+dpRows(t)+'</div>'+
   ($('pay').value?'<div class="lbl">Pembayaran</div><div class="note">'+v('pay')+'</div>':'')+
-  ($('note').value?'<div class="lbl">Catatan</div><div class="note">'+v('note')+'</div>':'')+sigHTML();
+  ($('note').value?'<div class="lbl">Catatan</div><div class="note">'+v('note')+'</div>':'')+sigHTML()+(t.paid?'<div class="wm">PAID</div>':'');
   stats(t);
 }
 
@@ -308,7 +327,7 @@ function saveInv(){
 }
 function loadInv(id){
   const e=getList().find(x=>x.id===id);if(!e)return;
-  fields.forEach(k=>$(k).value=e.f[k]??'');items=e.items.map(i=>({...i}));sig=e.sig||null;$('sigFile').value='';curId=id;renderItems();preview();drawList();$('msg').textContent='';
+  fields.forEach(k=>$(k).value=e.f[k]??'');if(!$('paid').value)$('paid').value='0';if(!$('dpType').value)$('dpType').value='amt';if(!$('dp').value)$('dp').value=0;items=e.items.map(i=>({...i}));sig=e.sig||null;$('sigFile').value='';curId=id;renderItems();preview();drawList();$('msg').textContent='';
 }
 function drawList(){
   buildMonths();monthStats();const l=inMonth(),box=$('lst');box.innerHTML='';
@@ -316,7 +335,7 @@ function drawList(){
   l.forEach(e=>{
     const d=document.createElement('div');d.className='li'+(e.id===curId?' on':'');
     const n=(e.f.toName||'?').trim(),h=(n.charCodeAt(0)*37)%360;
-    d.innerHTML='<div class="av" style="background:hsl('+h+',60%,82%);color:hsl('+h+',45%,28%)">'+esc(n.charAt(0).toUpperCase())+'</div><div class="m"><b>'+esc(e.f.no||'(tanpa nomor)')+'</b><small>'+esc(n)+'</small></div><div class="a">'+fmt(totalOf(e),e.f.cur)+'</div><button class="x" title="Hapus">×</button>';
+    d.innerHTML='<div class="av" style="background:hsl('+h+',60%,82%);color:hsl('+h+',45%,28%)">'+esc(n.charAt(0).toUpperCase())+'</div><div class="m"><b>'+esc(e.f.no||'(tanpa nomor)')+'</b><small>'+esc(n)+(e.f.paid==='1'?' · Lunas':(+e.f.dp>0?' · DP':''))+'</small></div><div class="a">'+fmt(totalOf(e),e.f.cur)+'</div><button class="x" title="Hapus">×</button>';
     d.onclick=()=>loadInv(e.id);
     d.querySelector('.x').onclick=ev=>{ev.stopPropagation();const b=ev.currentTarget;
       if(!b.dataset.arm){b.dataset.arm='1';b.textContent='Hapus?';b.style.color='#ff9aa8';b.style.fontSize='11px';setTimeout(()=>{if(b.isConnected){delete b.dataset.arm;b.textContent='×';b.style.color='';b.style.fontSize=''}},3000);return}
@@ -327,7 +346,7 @@ function drawList(){
 
 fields.forEach(f=>$(f).addEventListener('input',preview));
 $('add').onclick=()=>{items.push({d:'',q:1,p:0});renderItems();preview()};
-$('reset').onclick=()=>{items=[{d:'',q:1,p:0}];['fromName','fromAddr','no','toName','toAddr','pay','note','sigName'].forEach(f=>$(f).value='');$('disc').value=0;$('tax').value=0;sig=null;curId=null;$('sigFile').value='';applyProfile();$('no').value=nextNo();renderItems();preview();drawList()};
+$('reset').onclick=()=>{items=[{d:'',q:1,p:0}];['fromName','fromAddr','no','toName','toAddr','pay','note','sigName'].forEach(f=>$(f).value='');$('disc').value=0;$('tax').value=0;$('dp').value=0;$('dpType').value='amt';$('paid').value='0';$('paidDate').value='';sig=null;curId=null;$('sigFile').value='';applyProfile();$('no').value=nextNo();renderItems();preview();drawList()};
 $('newInv').onclick=()=>{$('reset').click();$('date').value=new Date().toISOString().slice(0,10);$('no').value=nextNo();preview()};
 $('save').onclick=saveInv;
 $('sigFile').onchange=e=>{
@@ -371,7 +390,7 @@ async function saveBlob(blob,name){
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
 }
 $('pdf').onclick=async()=>{
-  const name=($('no').value||'invoice').replace(/[^\w\-]+/g,'_')+'.pdf',b=$('pdf');
+  const name=($('paid').value==='1'?'Kwitansi-':'')+($('no').value||'invoice').replace(/[^\w\-]+/g,'_')+'.pdf',b=$('pdf');
   b.disabled=true;$('msg').textContent='Membuat PDF…';
   try{const blob=await previewPDF();await saveBlob(blob,name);$('msg').textContent='PDF siap: '+name}
   catch(e){$('msg').textContent=e&&e.code==='declined'?'Penyimpanan dibatalkan.':'Gagal membuat PDF. Coba lagi.'}
